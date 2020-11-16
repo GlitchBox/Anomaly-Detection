@@ -8,6 +8,7 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         self.L = 500
         self.D = 128
+        self.embeddingDimension = 120
         self.K = 1
 
         # self.feature_extractor_part1 = nn.Sequential(
@@ -41,21 +42,60 @@ class Attention(nn.Module):
             
         #reshaping the opticalFlow, so that it is in channel-first order (m,1024,7,7)
         opticalFlow = opticalFlow.permute(0,3,1,2)
-        if ifPool==False:
+        if ifPool==True:
+            opticalFlow = nn.MaxPool2d(kernel_size=3, stride=1)(opticalFlow)
+            opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(opticalFlow)
+            opticalFlow = nn.ReLU()(opticalFlow)
+            opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(opticalFlow)
+            opticalFlow = nn.ReLU()(opticalFlow)
+
+        else:
             opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(opticalFlow)
             opticalFlow = nn.ReLU()(opticalFlow)
             
             opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(opticalFlow)
             opticalFlow = nn.ReLU()(opticalFlow)
             
-            opticalFlow = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
+        opticalFlow = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(opticalFlow)
+        opticalFlow = nn.ReLU()(opticalFlow)
             
-            opticalFlow = opticalFlow.reshape(-1, 64*3*3)
-            opticalFlow = nn.Linear(in_features=64*3*3, out_features=120)
-            opticalFlow = nn.ReLU()(opticalFlow)
+        opticalFlow = opticalFlow.reshape(-1, 64*3*3)
+        opticalFlow = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
+        opticalFlow = nn.ReLU()(opticalFlow)
+
         
         return opticalFlow
+
+    #this is a trial attempt at building a feature extractor for the rgb output from i3d
+    # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
+    #output will be a 120 dimension vector for now
+    def feature_extractor_rgb_i3d(self, rgb, ifPool=False):
+            
+        #reshaping the rgb input, so that it is in channel-first order (m,1024,7,7)
+        rgb = rgb.permute(0,3,1,2)
+        if ifPool==True:
+            rgb = nn.MaxPool2d(kernel_size=3, stride=1)(rgb)
+            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+
+        else:
+            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            
+            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            
+        rgb = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(rgb)
+        rgb = nn.ReLU()(rgb)
+            
+        rgb = rgb.reshape(-1, 64*3*3)
+        rgb = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
+        rgb = nn.ReLU()(rgb)
+
+        
+        return rgb
 
     def forward(self, x):
         x = x.squeeze(0)
@@ -96,21 +136,22 @@ class GatedAttention(nn.Module):
         super(GatedAttention, self).__init__()
         self.L = 500
         self.D = 128
+        self.embeddingDimension = 120
         self.K = 1
 
-        self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(1, 20, kernel_size=5),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(20, 50, kernel_size=5),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2)
-        )
+        # self.feature_extractor_part1 = nn.Sequential(
+        #     nn.Conv2d(1, 20, kernel_size=5),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, stride=2),
+        #     nn.Conv2d(20, 50, kernel_size=5),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, stride=2)
+        # )
 
-        self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(50 * 4 * 4, self.L),
-            nn.ReLU(),
-        )
+        # self.feature_extractor_part2 = nn.Sequential(
+        #     nn.Linear(50 * 4 * 4, self.L),
+        #     nn.ReLU(),
+        # )
 
         self.attention_V = nn.Sequential(
             nn.Linear(self.L, self.D),
@@ -136,22 +177,61 @@ class GatedAttention(nn.Module):
             
         #reshaping the opticalFlow, so that it is in channel-first order (m,1024,7,7)
         opticalFlow = opticalFlow.permute(0,3,1,2)
-        if ifPool==False:
+        if ifPool==True:
+            opticalFlow = nn.MaxPool2d(kernel_size=3, stride=1)(opticalFlow)
+            opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(opticalFlow)
+            opticalFlow = nn.ReLU()(opticalFlow)
+            opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(opticalFlow)
+            opticalFlow = nn.ReLU()(opticalFlow)
+
+        else:
             opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(opticalFlow)
             opticalFlow = nn.ReLU()(opticalFlow)
             
             opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(opticalFlow)
             opticalFlow = nn.ReLU()(opticalFlow)
             
-            opticalFlow = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
+        opticalFlow = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(opticalFlow)
+        opticalFlow = nn.ReLU()(opticalFlow)
             
-            opticalFlow = opticalFlow.reshape(-1, 64*3*3)
-            opticalFlow = nn.Linear(in_features=64*3*3, out_features=120)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
+        opticalFlow = opticalFlow.reshape(-1, 64*3*3)
+        opticalFlow = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
+        opticalFlow = nn.ReLU()(opticalFlow)
+
         
         return opticalFlow
 
+    #this is a trial attempt at building a feature extractor for the rgb output from i3d
+    # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
+    #output will be a 120 dimension vector for now
+    def feature_extractor_rgb_i3d(self, rgb, ifPool=False):
+            
+        #reshaping the rgb input, so that it is in channel-first order (m,1024,7,7)
+        rgb = rgb.permute(0,3,1,2)
+        if ifPool==True:
+            rgb = nn.MaxPool2d(kernel_size=3, stride=1)(rgb)
+            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+
+        else:
+            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            
+            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(rgb)
+            rgb = nn.ReLU()(rgb)
+            
+        rgb = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(rgb)
+        rgb = nn.ReLU()(rgb)
+            
+        rgb = rgb.reshape(-1, 64*3*3)
+        rgb = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
+        rgb = nn.ReLU()(rgb)
+
+        
+        return rgb
+        
     def forward(self, x):
         x = x.squeeze(0)
 
