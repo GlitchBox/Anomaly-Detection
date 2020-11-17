@@ -120,7 +120,8 @@ class Attention(nn.Module):
 class GatedAttention(nn.Module):
     def __init__(self):
         super(GatedAttention, self).__init__()
-        self.L = 500
+        # self.L = 500
+        self.L = 256
         self.D = 128
         self.embeddingDimension = 120
         self.K = 1
@@ -128,11 +129,13 @@ class GatedAttention(nn.Module):
 
         self.attention_V = nn.Sequential(
             nn.Linear(self.L, self.D),
+            # nn.Linear(90, 60),
             nn.Tanh()
         )
 
         self.attention_U = nn.Sequential(
             nn.Linear(self.L, self.D),
+            # nn.Linear(90, 60),
             nn.Sigmoid()
         )
 
@@ -205,14 +208,23 @@ class GatedAttention(nn.Module):
         
         return rgb
 
-    def frame_encoder(self, openpose_instance_single_frame, Use_LSTM=True):
-        #openpose_instance_single_frame will be of the size (m, people_num, 25, 3), here m is the number of people in a frame
-        human_count = openpose_instance_single_frame.shape(1)
-        H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
-        H = nn.Linear(in_features=25*3, out_features=90)(H)
+    def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
+        #openpose_instance_single_frame will be of the size (people_num, 25, 3), here m is the number of people in a frame
+        human_count = openpose_instance_single_frame.shape(0)
+        H = openpose_instance_single_frame.reshape(human_count, 25*3)
+        H = nn.Linear(in_features=25*3, out_features=self.L)(H) #output of this will be shape (human_count, 256)
+
+        A = None
+        if pooling ==  'attention' or pooling == 'max':
+            A_V = self.attention_V(H) #(human_count, 128)
+            A_U = self.attention_U(H) #(human_count, 128)
+            A = self.attention_weights(A_V*A_U) # (human_count, 1)
+            A = torch.transpose(A, 1, 0) #(1, human_count)
+            if pooling == 'attention':
+                A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
         
-        if Use_LSTM == True:
-            pass
+        M = torch.mm(A, H) #(1,256)
+        return M
 
     def forward(self, x):
         x = x.squeeze(0)
