@@ -122,19 +122,19 @@ class GatedAttention(nn.Module):
         super(GatedAttention, self).__init__()
         # self.L = 500
         self.L = 256
-        self.D = 128
+        self.D = 64
         self.embeddingDimension = 120
         self.K = 1
-        self.poolingPolicy = ["attention", "uniform", "max"]
+        self.poolingPolicy = ["attention", "avg", "max"]
 
         self.attention_V = nn.Sequential(
-            nn.Linear(self.L, self.D),
+            nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Tanh()
         )
 
         self.attention_U = nn.Sequential(
-            nn.Linear(self.L, self.D),
+            nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Sigmoid()
         )
@@ -148,6 +148,7 @@ class GatedAttention(nn.Module):
     
     #this is a trial attempt at building a feature extractor for the optical flow from i3d
     # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
+    #I'm assuming, the input will be of the form (m, 7, 7, 1024)
     #output will be a 120 dimension vector for now
     def feature_extractor_opticalflow_i3d(self, opticalFlow, ifPool=False):
             
@@ -172,13 +173,14 @@ class GatedAttention(nn.Module):
             
         opticalFlow = opticalFlow.reshape(-1, 64*3*3)
         opticalFlow = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
-        opticalFlow = nn.ReLU()(opticalFlow)
+        opticalFlow = nn.ReLU()(opticalFlow) #output shape (m, 120)
 
-        
-        return opticalFlow
+        return opticalFlow.squeeze(0) #output shape (120)
+        # return opticalFlow
 
     #this is a trial attempt at building a feature extractor for the rgb output from i3d
     # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
+    #I'm assuming, the input will be of the form (m, 7, 7, 1024)
     #output will be a 120 dimension vector for now
     def feature_extractor_rgb_i3d(self, rgb, ifPool=False):
             
@@ -203,28 +205,46 @@ class GatedAttention(nn.Module):
             
         rgb = rgb.reshape(-1, 64*3*3)
         rgb = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
-        rgb = nn.ReLU()(rgb)
+        rgb = nn.ReLU()(rgb) #output shape (m, 120)
 
-        
-        return rgb
+        return rgb.squeeze(0) #output shape (120)
+        # return rgb
 
     def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
         #openpose_instance_single_frame will be of the size (people_num, 25, 3), here m is the number of people in a frame
         human_count = openpose_instance_single_frame.shape(0)
         H = openpose_instance_single_frame.reshape(human_count, 25*3)
-        H = nn.Linear(in_features=25*3, out_features=self.L)(H) #output of this will be shape (human_count, 256)
+        H = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)(H) #output of this will be shape (human_count, 120)
 
         A = None
         if pooling ==  'attention' or pooling == 'max':
-            A_V = self.attention_V(H) #(human_count, 128)
-            A_U = self.attention_U(H) #(human_count, 128)
+            A_V = self.attention_V(H) #(human_count, 64)
+            A_U = self.attention_U(H) #(human_count, 64)
             A = self.attention_weights(A_V*A_U) # (human_count, 1)
             A = torch.transpose(A, 1, 0) #(1, human_count)
+            
             if pooling == 'attention':
                 A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
+            else:
+                A_ = torch.zeros((1,human_count))
+                A_[0][A.argmax()] = 1
+                A = A_
+        elif pooling == 'avg':
+            A = A/human_count
         
-        M = torch.mm(A, H) #(1,256)
-        return M
+        M = torch.mm(A, H) #(1,120)
+        return M.squeeze(0) #output shape (120)
+        # return M
+
+    #I'm assuming that the single_instance will be "list" of tensors
+    def openpose_instance_encoder(self, single_instance):
+        encoded_frames = []
+        instanceLen = len(single_instance)
+
+        for i in range(instanceLen):
+            encoded_frame = self.frame_encoder(single_instance[i])
+            encoded_frames.append(encoded_frame)
+        #now encoded_frames will be a list of tensors. The shape-> (10, 120)
 
     def forward(self, x):
         x = x.squeeze(0)
