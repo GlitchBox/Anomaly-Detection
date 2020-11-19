@@ -175,8 +175,8 @@ class GatedAttention(nn.Module):
         opticalFlow = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
         opticalFlow = nn.ReLU()(opticalFlow) #output shape (m, 120)
 
-        return opticalFlow.squeeze(0) #output shape (120)
-        # return opticalFlow
+        # return opticalFlow.squeeze(0) #output shape (120)
+        return opticalFlow #output shape (m,120)
 
     #this is a trial attempt at building a feature extractor for the rgb output from i3d
     # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
@@ -207,35 +207,48 @@ class GatedAttention(nn.Module):
         rgb = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
         rgb = nn.ReLU()(rgb) #output shape (m, 120)
 
-        return rgb.squeeze(0) #output shape (120)
-        # return rgb
+        # return rgb.squeeze(0) #output shape (120)
+        return rgb #output shape (m,120)
 
+    #the commented out lines are for when m == 1 and m is not included in the input shape
     def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
-        #openpose_instance_single_frame will be of the size (people_num, 25, 3), here m is the number of people in a frame
-        human_count = openpose_instance_single_frame.shape(0)
-        H = openpose_instance_single_frame.reshape(human_count, 25*3)
-        H = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)(H) #output of this will be shape (human_count, 120)
+        #openpose_instance_single_frame will be of the size (m, human_count, 25, 3), here m is the number of people in a frame
+        # human_count = openpose_instance_single_frame.shape(0)
+        m = openpose_instance_single_frame.shape(0)
+        human_count = openpose_instance_single_frame.shape(1)
+        # H = openpose_instance_single_frame.reshape(human_count, 25*3)
+        H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
+        H = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)(H) #output of this will be shape (m, human_count, 120)
 
         A = None
         if pooling ==  'attention' or pooling == 'max':
-            A_V = self.attention_V(H) #(human_count, 64)
-            A_U = self.attention_U(H) #(human_count, 64)
-            A = self.attention_weights(A_V*A_U) # (human_count, 1)
-            A = torch.transpose(A, 1, 0) #(1, human_count)
+            A_V = self.attention_V(H) #(m, human_count, 64)
+            A_U = self.attention_U(H) #(m, human_count, 64)
+            A = self.attention_weights(A_V*A_U) # (m, human_count, 1)
+            # A = torch.transpose(A, 1, 0) #(1, human_count)
+            A = A.permute(0, 2, 1) #(m, 1, human_count)
             
             if pooling == 'attention':
-                A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
+                # A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
+                A = F.softmax(A, dim=2) #softmax over human_count (m, 1, human_count)
             else:
-                A_ = torch.zeros((1,human_count))
-                A_[0][A.argmax()] = 1
+                A_ = torch.zeros((m, 1,human_count))
+                # A_ = torch.zeros(( 1,human_count))
+                # A_[0][A.argmax()] = 1
+                for i in range(m):
+                    A_[i][0][A[i][0].argmax()] = 1
                 A = A_
         elif pooling == 'avg':
             A = A/human_count
         
-        M = torch.mm(A, H) #(1,120)
-        return M.squeeze(0) #output shape (120)
-        # return M
+        M = torch.zeros((m,1,120))
+        # M = torch.mm(A, H) #(1,120) 
+        for i in range(m):
+            M[i] = torch.mm(A[i], H[i]) #Shape of M (m,1,120)
+        # return M.squeeze(0) #output shape (120)
+        return M.squeeze(1) #output shape (m,120)
 
+    #the commented out lines are for when m == 1 and m is not included in the input shape
     #I'm assuming that the single_instance will be "list" of tensors
     def openpose_instance_encoder(self, single_instance):
         encoded_frames = []
@@ -243,8 +256,31 @@ class GatedAttention(nn.Module):
 
         for i in range(instanceLen):
             encoded_frame = self.frame_encoder(single_instance[i])
+            encoded_frame = nn.Linear(in_features=120, out_features=256)(encoded_frame) #output shape (1,256)
+            encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
             encoded_frames.append(encoded_frame)
-        #now encoded_frames will be a list of tensors. The shape-> (10, 120)
+        #now encoded_frames will be a list of tensors. The shape-> (10, 1, 1, 256)
+
+        #now I'll prepare an LSTM cell
+        input_dim = 256
+        output_dim = 512
+        layers_num = 1
+        batch_size = 1
+        
+        lstm_layer = nn.LSTM(input_dim, output_dim, layers_num, batch_first=True)
+        hidden_state = torch.randn(layers_num, batch_size, output_dim)
+        cell_state = torch.randn(layers_num, batch_size, output_dim)
+        hidden = (hidden_state, cell_state)
+        
+        for frame in encoded_frames:
+            out, hidden = lstm_layer(frame, hidden)
+        
+        #now hidden[1] stores the cell state, ergo the long term memory
+        #I'm using the cell state as the embedding
+        outPutEmbedding = hidden[1] #shape (1,1,512) or (1,m,512)
+        outPutEmbedding = nn.Linear(in_features=512, out_features=120)(outPutEmbedding) #shape (1,1,120) or (1,m,120)
+        #return outPutEmbedding[0][0] #output shape (120)
+        return outPutEmbedding[0] #output shape (m,120)
 
     def forward(self, x):
         x = x.squeeze(0)
