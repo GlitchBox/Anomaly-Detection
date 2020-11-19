@@ -213,9 +213,9 @@ class GatedAttention(nn.Module):
     #the commented out lines are for when m == 1 and m is not included in the input shape
     def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
         #openpose_instance_single_frame will be of the size (m, human_count, 25, 3), here m is the number of people in a frame
-        # human_count = openpose_instance_single_frame.shape(0)
-        m = openpose_instance_single_frame.shape(0)
-        human_count = openpose_instance_single_frame.shape(1)
+        # human_count = openpose_instance_single_frame.shape[0]
+        m = openpose_instance_single_frame.shape[0]
+        human_count = openpose_instance_single_frame.shape[1]
         # H = openpose_instance_single_frame.reshape(human_count, 25*3)
         H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
         H = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)(H) #output of this will be shape (m, human_count, 120)
@@ -257,15 +257,16 @@ class GatedAttention(nn.Module):
         for i in range(instanceLen):
             encoded_frame = self.frame_encoder(single_instance[i])
             encoded_frame = nn.Linear(in_features=120, out_features=256)(encoded_frame) #output shape (1,256)
-            encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
+            # encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
+            encoded_frame = encoded_frame.unsqueeze(1) #output shape (m,1,256)
             encoded_frames.append(encoded_frame)
-        #now encoded_frames will be a list of tensors. The shape-> (10, 1, 1, 256)
+        #now encoded_frames will be a list of tensors. The shape-> (10, 1, 1, 256) or (10, m , 1, 256)
 
         #now I'll prepare an LSTM cell
         input_dim = 256
         output_dim = 512
         layers_num = 1
-        batch_size = 1
+        batch_size = encoded_frames[0].shape[0]
         
         lstm_layer = nn.LSTM(input_dim, output_dim, layers_num, batch_first=True)
         hidden_state = torch.randn(layers_num, batch_size, output_dim)
