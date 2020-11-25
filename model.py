@@ -118,14 +118,41 @@ class Attention(nn.Module):
         return neg_log_likelihood, A
 
 class GatedAttention(nn.Module):
-    def __init__(self):
+    def __init__(self, embeddingDimension):
         super(GatedAttention, self).__init__()
         # self.L = 500
         self.L = 256
         self.D = 64
-        self.embeddingDimension = 120
+        self.embeddingDimension = embeddingDimension #this could be a possible hyperparameter
         self.K = 1
         self.poolingPolicy = ["attention", "avg", "max"]
+
+        self.i3d_opticalflow_extractor1 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1),
+            nn.ReLU()
+        )
+
+        self.i3d_opticalflow_extractor2 = nn.Sequential(
+            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
+
+        self.i3d_opticalflow_extractor3 = nn.Sequential(
+            nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+            nn.ReLU(),
+            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
+            nn.ReLU() #output shape (m, 120)
+        )
+
+        self.i3d_opticalflow_extractor4 = nn.Sequential(
+            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
+            nn.ReLU() #output shape (m, 120)
+        )
 
         self.attention_V = nn.Sequential(
             nn.Linear(self.embeddingDimension, self.D),
@@ -155,26 +182,14 @@ class GatedAttention(nn.Module):
         #reshaping the opticalFlow, so that it is in channel-first order (m,1024,7,7)
         opticalFlow = opticalFlow.permute(0,3,1,2)
         if ifPool==True:
-            opticalFlow = nn.MaxPool2d(kernel_size=3, stride=1)(opticalFlow)
-            opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
-            opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
+            opticalFlow = self.i3d_opticalflow_extractor1(opticalFlow)
 
         else:
-            opticalFlow = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
+            opticalFlow = self.i3d_opticalflow_extractor2(opticalFlow)
             
-            opticalFlow = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(opticalFlow)
-            opticalFlow = nn.ReLU()(opticalFlow)
-            
-        opticalFlow = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(opticalFlow)
-        opticalFlow = nn.ReLU()(opticalFlow)
-            
+        opticalFlow = self.i3d_opticalflow_extractor3(opticalFlow)
         opticalFlow = opticalFlow.reshape(-1, 64*3*3)
-        opticalFlow = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
-        opticalFlow = nn.ReLU()(opticalFlow) #output shape (m, 120)
-
+        opticalFlow = self.i3d_opticalflow_extractor4(opticalFlow)
         # return opticalFlow.squeeze(0) #output shape (120)
         return opticalFlow #output shape (m,120)
 
@@ -256,7 +271,7 @@ class GatedAttention(nn.Module):
 
         for i in range(instanceLen):
             encoded_frame = self.frame_encoder(single_instance[i])
-            encoded_frame = nn.Linear(in_features=120, out_features=256)(encoded_frame) #output shape (1,256)
+            encoded_frame = nn.Linear(in_features=120, out_features=256)(encoded_frame) #output shape (1,256) or (m,256)
             # encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
             encoded_frame = encoded_frame.unsqueeze(1) #output shape (m,1,256)
             encoded_frames.append(encoded_frame)
