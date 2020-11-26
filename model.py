@@ -144,14 +144,38 @@ class GatedAttention(nn.Module):
 
         self.i3d_opticalflow_extractor3 = nn.Sequential(
             nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
-            nn.ReLU(),
-            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
-            nn.ReLU() #output shape (m, 120)
+            nn.ReLU()
         )
 
         self.i3d_opticalflow_extractor4 = nn.Sequential(
             nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
-            nn.ReLU() #output shape (m, 120)
+            nn.ReLU()
+        )
+
+
+        self.i3d_rgb_extractor1 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1),
+            nn.ReLU()
+        )
+
+        self.i3d_rgb_extractor2 = nn.Sequential(
+            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
+
+        self.i3d_rgb_extractor3 = nn.Sequential(
+            nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+            nn.ReLU()
+        )
+
+        self.i3d_rgb_extractor4 = nn.Sequential(
+            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
+            nn.ReLU()
         )
 
         self.attention_V = nn.Sequential(
@@ -189,7 +213,8 @@ class GatedAttention(nn.Module):
             
         opticalFlow = self.i3d_opticalflow_extractor3(opticalFlow)
         opticalFlow = opticalFlow.reshape(-1, 64*3*3)
-        opticalFlow = self.i3d_opticalflow_extractor4(opticalFlow)
+        opticalFlow = self.i3d_opticalflow_extractor4(opticalFlow) #output shape (m, 120)
+        
         # return opticalFlow.squeeze(0) #output shape (120)
         return opticalFlow #output shape (m,120)
 
@@ -202,25 +227,14 @@ class GatedAttention(nn.Module):
         #reshaping the rgb input, so that it is in channel-first order (m,1024,7,7)
         rgb = rgb.permute(0,3,1,2)
         if ifPool==True:
-            rgb = nn.MaxPool2d(kernel_size=3, stride=1)(rgb)
-            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1)(rgb)
-            rgb = nn.ReLU()(rgb)
-            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1)(rgb)
-            rgb = nn.ReLU()(rgb)
+            rgb = self.i3d_rgb_extractor1(rgb)
 
         else:
-            rgb = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1)(rgb)
-            rgb = nn.ReLU()(rgb)
+            rgb = self.i3d_rgb_extractor2(rgb)
             
-            rgb = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1)(rgb)
-            rgb = nn.ReLU()(rgb)
-            
-        rgb = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)(rgb)
-        rgb = nn.ReLU()(rgb)
-            
+        rgb = self.i3d_rgb_extractor3(rgb)
         rgb = rgb.reshape(-1, 64*3*3)
-        rgb = nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension)
-        rgb = nn.ReLU()(rgb) #output shape (m, 120)
+        rgb =  self.i3d_rgb_extractor4(rgb) #output shape (m, 120)
 
         # return rgb.squeeze(0) #output shape (120)
         return rgb #output shape (m,120)
