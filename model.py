@@ -118,7 +118,7 @@ class Attention(nn.Module):
         return neg_log_likelihood, A
 
 class GatedAttention(nn.Module):
-    def __init__(self, embeddingDimension):
+    def __init__(self, embeddingDimension=120):
         super(GatedAttention, self).__init__()
         # self.L = 500
         self.L = 256
@@ -178,19 +178,21 @@ class GatedAttention(nn.Module):
             nn.ReLU()
         )
 
-        self.attention_V = nn.Sequential(
+        self.openpose_dense1 = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)
+
+        self.attention_V_frame = nn.Sequential(
             nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Tanh()
         )
 
-        self.attention_U = nn.Sequential(
+        self.attention_U_frame = nn.Sequential(
             nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Sigmoid()
         )
 
-        self.attention_weights = nn.Linear(self.D, self.K)
+        self.attention_weights_frame = nn.Linear(self.D, self.K)
 
         self.classifier = nn.Sequential(
             nn.Linear(self.L*self.K, 1),
@@ -214,7 +216,7 @@ class GatedAttention(nn.Module):
         opticalFlow = self.i3d_opticalflow_extractor3(opticalFlow)
         opticalFlow = opticalFlow.reshape(-1, 64*3*3)
         opticalFlow = self.i3d_opticalflow_extractor4(opticalFlow) #output shape (m, 120)
-        
+
         # return opticalFlow.squeeze(0) #output shape (120)
         return opticalFlow #output shape (m,120)
 
@@ -247,28 +249,28 @@ class GatedAttention(nn.Module):
         human_count = openpose_instance_single_frame.shape[1]
         # H = openpose_instance_single_frame.reshape(human_count, 25*3)
         H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
-        H = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)(H) #output of this will be shape (m, human_count, 120)
+        H = self.openpose_dense1(H) #output of this will be shape (m, human_count, 120)
 
         A = None
         if pooling ==  'attention' or pooling == 'max':
-            A_V = self.attention_V(H) #(m, human_count, 64)
-            A_U = self.attention_U(H) #(m, human_count, 64)
-            A = self.attention_weights(A_V*A_U) # (m, human_count, 1)
+            A_V = self.attention_V_frame(H) #(m, human_count, 64)
+            A_U = self.attention_U_frame(H) #(m, human_count, 64)
+            A = self.attention_weights_frame(A_V*A_U) # (m, human_count, 1)
             # A = torch.transpose(A, 1, 0) #(1, human_count)
             A = A.permute(0, 2, 1) #(m, 1, human_count)
             
             if pooling == 'attention':
                 # A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
-                A = F.softmax(A, dim=2) #softmax over human_count (m, 1, human_count)
+                A = F.softmax(A, dim=2) #softmax over human_count (m, 1, human_count), softmax doesn't have learnable parameters, hence it need not be declared in __init__
             else:
-                A_ = torch.zeros((m, 1,human_count))
+                A_ = torch.zeros((m, 1, human_count))
                 # A_ = torch.zeros(( 1,human_count))
                 # A_[0][A.argmax()] = 1
                 for i in range(m):
                     A_[i][0][A[i][0].argmax()] = 1
                 A = A_
         elif pooling == 'avg':
-            A = A/human_count
+            A = torch.ones((m,1,human_count))/human_count
         
         M = torch.zeros((m,1,120))
         # M = torch.mm(A, H) #(1,120) 
