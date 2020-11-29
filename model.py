@@ -201,12 +201,16 @@ class GatedAttention(nn.Module):
     
     #this is a trial attempt at building a feature extractor for the optical flow from i3d
     # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
-    #I'm assuming, the input will be of the form (m, 7, 7, 1024)
+    #I'm assuming, the input will be of the form ( 7, 7, 1024)
     #output will be a 120 dimension vector for now
     def feature_extractor_opticalflow_i3d(self, opticalFlow, ifPool=False):
             
         #reshaping the opticalFlow, so that it is in channel-first order (m,1024,7,7)
-        opticalFlow = opticalFlow.permute(0,3,1,2)
+        # opticalFlow = opticalFlow.permute(0,3,1,2)
+        
+        #reshaping the opticalFlow, so that it is in channel-first order (1024,7,7)
+        opticalFlow = opticalFlow.permute(2,0,1)
+        opticalFlow = opticalFlow.unsqueeze(0) #including the batch size, the shape becomes (1,1024,7,7)
         if ifPool==True:
             opticalFlow = self.i3d_opticalflow_extractor1(opticalFlow)
 
@@ -217,17 +221,21 @@ class GatedAttention(nn.Module):
         opticalFlow = opticalFlow.reshape(-1, 64*3*3)
         opticalFlow = self.i3d_opticalflow_extractor4(opticalFlow) #output shape (m, 120)
 
-        # return opticalFlow.squeeze(0) #output shape (120)
-        return opticalFlow #output shape (m,120)
+        return opticalFlow.squeeze(0) #output shape (120)
+        # return opticalFlow #output shape (m,120)
 
     #this is a trial attempt at building a feature extractor for the rgb output from i3d
     # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
-    #I'm assuming, the input will be of the form (m, 7, 7, 1024)
+    #I'm assuming, the input will be of the form (7, 7, 1024)
     #output will be a 120 dimension vector for now
     def feature_extractor_rgb_i3d(self, rgb, ifPool=False):
             
         #reshaping the rgb input, so that it is in channel-first order (m,1024,7,7)
         rgb = rgb.permute(0,3,1,2)
+
+        #reshaping the rgb input, so that it is in channel-first order (1024,7,7)
+        rgb = rgb.permute(2,0,1)
+        rgb = rgb.unsqueeze(0) #including the batch-size dimension, the shape becomes (1,1024,7,7)
         if ifPool==True:
             rgb = self.i3d_rgb_extractor1(rgb)
 
@@ -238,8 +246,8 @@ class GatedAttention(nn.Module):
         rgb = rgb.reshape(-1, 64*3*3)
         rgb =  self.i3d_rgb_extractor4(rgb) #output shape (m, 120)
 
-        # return rgb.squeeze(0) #output shape (120)
-        return rgb #output shape (m,120)
+        return rgb.squeeze(0) #output shape (120)
+        # return rgb #output shape (m,120)
 
     #the commented out lines are for when m == 1 and m is not included in the input shape
     def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
