@@ -127,6 +127,7 @@ class GatedAttention(nn.Module):
         self.K = 1
         self.poolingPolicy = ["attention", "avg", "max"]
 
+        """ i3d layers """
         self.i3d_opticalflow_extractor1 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1),
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
@@ -134,25 +135,20 @@ class GatedAttention(nn.Module):
             nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1),
             nn.ReLU()
         )
-
         self.i3d_opticalflow_extractor2 = nn.Sequential(
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1),
             nn.ReLU()
         )
-
         self.i3d_opticalflow_extractor3 = nn.Sequential(
             nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
             nn.ReLU()
         )
-
         self.i3d_opticalflow_extractor4 = nn.Sequential(
             nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
             nn.ReLU()
         )
-
-
         self.i3d_rgb_extractor1 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1),
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
@@ -160,40 +156,48 @@ class GatedAttention(nn.Module):
             nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1),
             nn.ReLU()
         )
-
         self.i3d_rgb_extractor2 = nn.Sequential(
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1),
             nn.ReLU()
         )
-
         self.i3d_rgb_extractor3 = nn.Sequential(
             nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
             nn.ReLU()
         )
-
         self.i3d_rgb_extractor4 = nn.Sequential(
             nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension),
             nn.ReLU()
         )
+        
 
-        self.openpose_dense1 = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)
-
+        """ openpose frame layers """
+        self.frame_dense1 = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)
         self.attention_V_frame = nn.Sequential(
             nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Tanh()
         )
-
         self.attention_U_frame = nn.Sequential(
             nn.Linear(self.embeddingDimension, self.D),
             # nn.Linear(90, 60),
             nn.Sigmoid()
         )
-
         self.attention_weights_frame = nn.Linear(self.D, self.K)
 
+
+        """ openpose instance layers"""
+        self.instance_dense1 = nn.Linear(in_features=120, out_features=256)
+        
+        self.lstm_input_dim = 256
+        self.lstm_output_dim = 512
+        self.lstm_layers_num = 1
+        #should we opt for bidirectional lstm layer?
+        self.instance_lstm_layer = nn.LSTM(input_size=self.lstm_input_dim, hidden_size=self.lstm_output_dim, num_layers=self.lstm_layers_num, batch_first=True)
+
+
+        """classfier layers"""
         self.classifier = nn.Sequential(
             nn.Linear(self.L*self.K, 1),
             nn.Sigmoid()
@@ -262,7 +266,7 @@ class GatedAttention(nn.Module):
 
         H = openpose_instance_single_frame.reshape(human_count, 25*3)
         # H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
-        H = self.openpose_dense1(H) #output of this will be shape (human_count, 120)
+        H = self.frame_dense1(H) #output of this will be shape (human_count, 120)
 
         A = None
         if pooling ==  'attention' or pooling == 'max':
@@ -293,7 +297,6 @@ class GatedAttention(nn.Module):
         return M.squeeze(0) #output shape (120)
         # return M.squeeze(1) #output shape (m,120)
 
-    #the commented out lines are for when m == 1 and m is not included in the input shape
     #I'm assuming batch size will be 1 and batch_size will not be included in the input dimension
     #I'm assuming that the single_instance will be "list" of tensors of shape (human_count, 25, 3)
     def openpose_instance_encoder(self, single_instance):
@@ -301,26 +304,19 @@ class GatedAttention(nn.Module):
         instanceLen = len(single_instance)
 
         for i in range(instanceLen):
-            encoded_frame = self.frame_encoder(single_instance[i])
-            encoded_frame = nn.Linear(in_features=120, out_features=256)(encoded_frame) #output shape (1,256) or (m,256)
+            encoded_frame = self.frame_encoder(single_instance[i]) #output shape (120)
+            encoded_frame = self.instance_dense1(encoded_frame) #output shape (256)
             # encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
             encoded_frame = encoded_frame.unsqueeze(1) #output shape (m,1,256)
             encoded_frames.append(encoded_frame)
         #now encoded_frames will be a list of tensors. The shape-> (10, 1, 1, 256) or (10, m , 1, 256)
-
-        #now I'll prepare an LSTM cell
-        input_dim = 256
-        output_dim = 512
-        layers_num = 1
-        batch_size = encoded_frames[0].shape[0]
         
-        lstm_layer = nn.LSTM(input_dim, output_dim, layers_num, batch_first=True)
-        hidden_state = torch.randn(layers_num, batch_size, output_dim)
-        cell_state = torch.randn(layers_num, batch_size, output_dim)
+        hidden_state = torch.randn(self.lstm_layers_num, 1, self.lstm_output_dim)
+        cell_state = torch.randn(self.lstm_layers_num, 1, self.lstm_output_dim)
         hidden = (hidden_state, cell_state)
         
         for frame in encoded_frames:
-            out, hidden = lstm_layer(frame, hidden)
+            out, hidden = self.instance_lstm_layer(frame, hidden)
         
         #now hidden[1] stores the cell state, ergo the long term memory
         #I'm using the cell state as the embedding
