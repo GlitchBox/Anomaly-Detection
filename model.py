@@ -231,7 +231,7 @@ class GatedAttention(nn.Module):
     def feature_extractor_rgb_i3d(self, rgb, ifPool=False):
             
         #reshaping the rgb input, so that it is in channel-first order (m,1024,7,7)
-        rgb = rgb.permute(0,3,1,2)
+        # rgb = rgb.permute(0,3,1,2)
 
         #reshaping the rgb input, so that it is in channel-first order (1024,7,7)
         rgb = rgb.permute(2,0,1)
@@ -250,45 +250,52 @@ class GatedAttention(nn.Module):
         # return rgb #output shape (m,120)
 
     #the commented out lines are for when m == 1 and m is not included in the input shape
+    #I'm assuming that the openpose_instance_single_frame will be of shape (human_count, 25, 3)
     def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
-        #openpose_instance_single_frame will be of the size (m, human_count, 25, 3), here m is the number of people in a frame
-        # human_count = openpose_instance_single_frame.shape[0]
-        m = openpose_instance_single_frame.shape[0]
-        human_count = openpose_instance_single_frame.shape[1]
-        # H = openpose_instance_single_frame.reshape(human_count, 25*3)
-        H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
-        H = self.openpose_dense1(H) #output of this will be shape (m, human_count, 120)
+
+        #openpose_instance_single_frame will be of shape (human_count, 25, 3)
+        human_count = openpose_instance_single_frame.shape[0]
+        
+        #openpose_instance_single_frame will be of the size (m, human_count, 25, 3), here m is the batch_size
+        # m = openpose_instance_single_frame.shape[0]
+        # human_count = openpose_instance_single_frame.shape[1]
+
+        H = openpose_instance_single_frame.reshape(human_count, 25*3)
+        # H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
+        H = self.openpose_dense1(H) #output of this will be shape (human_count, 120)
 
         A = None
         if pooling ==  'attention' or pooling == 'max':
-            A_V = self.attention_V_frame(H) #(m, human_count, 64)
-            A_U = self.attention_U_frame(H) #(m, human_count, 64)
-            A = self.attention_weights_frame(A_V*A_U) # (m, human_count, 1)
-            # A = torch.transpose(A, 1, 0) #(1, human_count)
-            A = A.permute(0, 2, 1) #(m, 1, human_count)
+            A_V = self.attention_V_frame(H) #(human_count, 64)
+            A_U = self.attention_U_frame(H) #(human_count, 64)
+            A = self.attention_weights_frame(A_V*A_U) # (human_count, 1)
+            A = torch.transpose(A, 1, 0) #(1, human_count)
+            # A = A.permute(0, 2, 1) #(m, 1, human_count)
             
             if pooling == 'attention':
-                # A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
-                A = F.softmax(A, dim=2) #softmax over human_count (m, 1, human_count), softmax doesn't have learnable parameters, hence it need not be declared in __init__
+                A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
+                # A = F.softmax(A, dim=2) #softmax over human_count (m, 1, human_count), softmax doesn't have learnable parameters, hence it need not be declared in __init__
             else:
-                A_ = torch.zeros((m, 1, human_count))
-                # A_ = torch.zeros(( 1,human_count))
-                # A_[0][A.argmax()] = 1
-                for i in range(m):
-                    A_[i][0][A[i][0].argmax()] = 1
+                # A_ = torch.zeros((m, 1, human_count))
+                A_ = torch.zeros(( 1,human_count))
+                A_[0][A.argmax()] = 1
+                # for i in range(m):
+                #     A_[i][0][A[i][0].argmax()] = 1
                 A = A_
         elif pooling == 'avg':
-            A = torch.ones((m,1,human_count))/human_count
+            # A = torch.ones((m,1,human_count))/human_count
+            A = torch.ones((1,human_count))/human_count
         
-        M = torch.zeros((m,1,120))
-        # M = torch.mm(A, H) #(1,120) 
-        for i in range(m):
-            M[i] = torch.mm(A[i], H[i]) #Shape of M (m,1,120)
-        # return M.squeeze(0) #output shape (120)
-        return M.squeeze(1) #output shape (m,120)
+        # M = torch.zeros((m,1,120))
+        M = torch.mm(A, H) #(1,120) 
+        # for i in range(m):
+        #     M[i] = torch.mm(A[i], H[i]) #Shape of M (m,1,120)
+        return M.squeeze(0) #output shape (120)
+        # return M.squeeze(1) #output shape (m,120)
 
     #the commented out lines are for when m == 1 and m is not included in the input shape
-    #I'm assuming that the single_instance will be "list" of tensors
+    #I'm assuming batch size will be 1 and batch_size will not be included in the input dimension
+    #I'm assuming that the single_instance will be "list" of tensors of shape (human_count, 25, 3)
     def openpose_instance_encoder(self, single_instance):
         encoded_frames = []
         instanceLen = len(single_instance)
