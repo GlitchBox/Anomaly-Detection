@@ -194,8 +194,14 @@ class GatedAttention(nn.Module):
         self.lstm_output_dim = 512
         self.lstm_layers_num = 1
         #should we opt for bidirectional lstm layer?
-        self.instance_lstm_layer = nn.LSTM(input_size=self.lstm_input_dim, hidden_size=self.lstm_output_dim, num_layers=self.lstm_layers_num, batch_first=True)
-
+        self.instance_lstm_layer = nn.LSTM(
+                                    input_size=self.lstm_input_dim, 
+                                    hidden_size=self.lstm_output_dim, 
+                                    num_layers=self.lstm_layers_num, 
+                                    batch_first=True,
+                                    # bidirectional=True
+                                    )
+        self.instance_dense2 = nn.Linear(in_features=512, out_features=120)
 
         """classfier layers"""
         self.classifier = nn.Sequential(
@@ -299,31 +305,34 @@ class GatedAttention(nn.Module):
 
     #I'm assuming batch size will be 1 and batch_size will not be included in the input dimension
     #I'm assuming that the single_instance will be "list" of tensors of shape (human_count, 25, 3)
-    def openpose_instance_encoder(self, single_instance):
-        encoded_frames = []
+    def openpose_instance_encoder(self, single_instance, pooling="attention"):
+        
         instanceLen = len(single_instance)
+        encoded_frames = torch.zeros((instanceLen, self.lstm_input_dim)) #(frame_count, 256)
 
         for i in range(instanceLen):
             encoded_frame = self.frame_encoder(single_instance[i]) #output shape (120)
             encoded_frame = self.instance_dense1(encoded_frame) #output shape (256)
-            # encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,1,256)
-            encoded_frame = encoded_frame.unsqueeze(1) #output shape (m,1,256)
-            encoded_frames.append(encoded_frame)
-        #now encoded_frames will be a list of tensors. The shape-> (10, 1, 1, 256) or (10, m , 1, 256)
+            # encoded_frame = encoded_frame.unsqueeze(0) #output shape (1,256)
+            # encoded_frame = encoded_frame.unsqueeze(1) #output shape (m,1,256)
+            encoded_frames[i] = encoded_frame
+        encoded_frames = encoded_frames.unsqueeze(0)
+        #now encoded_frames will be a tensor of shape (1, frame_count, 256), because lstm expects 3d inputs
         
-        hidden_state = torch.randn(self.lstm_layers_num, 1, self.lstm_output_dim)
-        cell_state = torch.randn(self.lstm_layers_num, 1, self.lstm_output_dim)
-        hidden = (hidden_state, cell_state)
+        #not passing initial activation and initial cell is the same as passing a couple of 0 vectors
+        activations, last_activation_cell = self.instance_lstm_layer(encoded_frames) #output shape (1, frame_count, 512)
+        outPutEmbedding = None
         
-        for frame in encoded_frames:
-            out, hidden = self.instance_lstm_layer(frame, hidden)
-        
-        #now hidden[1] stores the cell state, ergo the long term memory
-        #I'm using the cell state as the embedding
-        outPutEmbedding = hidden[1] #shape (1,1,512) or (1,m,512)
-        outPutEmbedding = nn.Linear(in_features=512, out_features=120)(outPutEmbedding) #shape (1,1,120) or (1,m,120)
+        if pooling == "attention":
+            pass 
+        else:
+            #since I'm not using the attention pooling, I'll just select last activation as the outputEmbedding
+            outPutEmbedding = activations[0][-1] #shape (512)
+            outPutEmbedding = self.instance_dense2(outPutEmbedding) #shape (120)
+
+        return outPutEmbedding
         #return outPutEmbedding[0][0] #output shape (120)
-        return outPutEmbedding[0] #output shape (m,120)
+        # return outPutEmbedding[0] #output shape (m,120)
 
     def forward(self, x):
         x = x.squeeze(0)
