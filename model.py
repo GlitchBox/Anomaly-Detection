@@ -202,6 +202,18 @@ class GatedAttention(nn.Module):
                                     # bidirectional=True
                                     )
         self.instance_dense2 = nn.Linear(in_features=512, out_features=120)
+        
+        self.attention_V_instance = nn.Sequential(
+            nn.Linear(512, 256),
+            # nn.Linear(90, 60),
+            nn.Tanh()
+        )
+        self.attention_U_instance = nn.Sequential(
+            nn.Linear(512, 256),
+            # nn.Linear(90, 60),
+            nn.Sigmoid()
+        )
+        self.attention_weights_instance = nn.Linear(256, self.K)
 
         """classfier layers"""
         self.classifier = nn.Sequential(
@@ -324,18 +336,35 @@ class GatedAttention(nn.Module):
         outPutEmbedding = None
         
         if pooling == "attention":
-            pass 
+            H = activations[0] #shape(frame_count, 512)
+            A_V =  self.attention_V_instance(H) #shape (frame_count, 256)
+            A_U = self.attention_U_instance(H) #shape (frame_count, 256)
+            A = self.attention_weights_instance(A_V*A_U) #shape (frame_count, 1)
+            A = torch.transpose(A, 1, 0) #shape (1, frame_count)
+            A = F.softmax(A, dim=1) # softmax over frame_count, (1, frame_count)
+            outPutEmbedding = torch.mm(A,H) #shape (1,512)
+            outPutEmbedding = outPutEmbedding.squeeze(0) #shape(512)
         else:
             #since I'm not using the attention pooling, I'll just select last activation as the outputEmbedding
             outPutEmbedding = activations[0][-1] #shape (512)
-            outPutEmbedding = self.instance_dense2(outPutEmbedding) #shape (120)
-
+        
+        outPutEmbedding = self.instance_dense2(outPutEmbedding) #shape (120)
         return outPutEmbedding
         #return outPutEmbedding[0][0] #output shape (120)
         # return outPutEmbedding[0] #output shape (m,120)
 
+    #I'm assuming x will be like the following [i3d_optical, i3d_rgb, openpose_list]
     def forward(self, x):
-        x = x.squeeze(0)
+        # x = x.squeeze(0)
+        i3d_optical = x[0]
+        i3d_rgb = x[1]
+        openpose_instance = x[2]
+
+        optical_encoding = self.feature_extractor_opticalflow_i3d(i3d_optical) #shape (120)
+        rgb_encoding = self.feature_extractor_rgb_i3d(i3d_rgb) #shape (120)
+        i3d_encoding = optical_encoding + rgb_encoding #shape (120)
+
+        openpose_encoding = self.openpose_instance_encoder(openpose_instance) #shape (120)
 
         H = self.feature_extractor_part1(x)
         H = H.view(-1, 50 * 4 * 4)
