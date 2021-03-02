@@ -228,8 +228,8 @@ class GatedAttention(nn.Module):
         )
     
     #this is a trial attempt at building a feature extractor for the optical flow from i3d
-    # input dimension will be (7,7,1024) or (m,7,7,1024) maybe?
-    #I'm assuming, the input will be of the form ( 7, 7, 1024)
+    # (m,7,7,1024) maybe?
+    #I'm assuming, the input will be of the form (m, 7, 7, 1024)
     #output will be a 120 dimension vector for now
     def feature_extractor_opticalflow_i3d(self, opticalFlow, ifPool=False):
             
@@ -237,7 +237,7 @@ class GatedAttention(nn.Module):
         # opticalFlow = opticalFlow.permute(0,3,1,2)
         
         #reshaping the opticalFlow, so that it is in channel-first order (1024,7,7)
-        opticalFlow = opticalFlow.permute(2,0,1)
+        opticalFlow = opticalFlow.permute(2,0,1) """change here"""
         opticalFlow = opticalFlow.unsqueeze(0) #including the batch size, the shape becomes (1,1024,7,7)
         if ifPool==True:
             opticalFlow = self.i3d_opticalflow_extractor1(opticalFlow)
@@ -283,14 +283,14 @@ class GatedAttention(nn.Module):
     def frame_encoder(self, openpose_instance_frames, pooling='attention'):
 
         #openpose_instance_frames will be of shape (human_count, 25, 3)
-        # human_count = openpose_instance_frames.shape[0]
+        human_count = openpose_instance_frames.shape[0]
         
         #openpose_instance_frames will be of the size (m, human_count, 25, 3), here m is the batch_size
-        m = openpose_instance_frames.shape[0]
+        # m = openpose_instance_frames.shape[0]
         # human_count = openpose_instance_frames.shape[1]
 
-        # H = openpose_instance_frames.reshape(human_count, 25*3)
-        H = openpose_instance_frames.reshape(-1, human_count, 25*3)
+        H = openpose_instance_frames.reshape(human_count, 25*3)
+        # H = openpose_instance_frames.reshape(-1, human_count, 25*3)
         H = self.frame_dense1(H) #output of this will be shape (human_count, 120)
 
         A = None
@@ -398,6 +398,8 @@ class GatedAttention(nn.Module):
     #openpose_list ==  list of instances
     #an instance == list of frames
     #a frame == a tensor of shape (human_count, 25, 3)
+
+    
     def forward(self, x, y):
         # x = x.squeeze(0)
         i3d_optical = x[0]
