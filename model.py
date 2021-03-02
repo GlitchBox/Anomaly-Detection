@@ -129,6 +129,8 @@ class GatedAttention(nn.Module):
 
         """ i3d layers """
         self.i3d_opticalflow_extractor1 = nn.Sequential(
+
+            #when pooling layer is used
             nn.MaxPool2d(kernel_size=3, stride=1),
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
             nn.ReLU(),
@@ -150,6 +152,8 @@ class GatedAttention(nn.Module):
             nn.ReLU()
         )
         self.i3d_rgb_extractor1 = nn.Sequential(
+
+            #When pooling layer is used
             nn.MaxPool2d(kernel_size=3, stride=1),
             nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1),
             nn.ReLU(),
@@ -215,6 +219,8 @@ class GatedAttention(nn.Module):
         )
         self.attention_weights_instance = nn.Linear(256, self.K)
 
+        "openpose bag layers"
+
         """classfier layers"""
         self.classifier = nn.Sequential(
             nn.Linear(self.L*self.K, 1),
@@ -271,19 +277,20 @@ class GatedAttention(nn.Module):
         return rgb.squeeze(0) #output shape (120)
         # return rgb #output shape (m,120)
 
-    #the commented out lines are for when m == 1 and m is not included in the input shape
-    #I'm assuming that the openpose_instance_single_frame will be of shape (human_count, 25, 3)
-    def frame_encoder(self, openpose_instance_single_frame, pooling='attention'):
+    #I'm assuming that a tensor of following shape will be passed to this method: (m, human_count,25, 3)
+    #here m == number of frames in an instance
+    #m will work as the batch size for the following calculations
+    def frame_encoder(self, openpose_instance_frames, pooling='attention'):
 
-        #openpose_instance_single_frame will be of shape (human_count, 25, 3)
-        human_count = openpose_instance_single_frame.shape[0]
+        #openpose_instance_frames will be of shape (human_count, 25, 3)
+        # human_count = openpose_instance_frames.shape[0]
         
-        #openpose_instance_single_frame will be of the size (m, human_count, 25, 3), here m is the batch_size
-        # m = openpose_instance_single_frame.shape[0]
-        # human_count = openpose_instance_single_frame.shape[1]
+        #openpose_instance_frames will be of the size (m, human_count, 25, 3), here m is the batch_size
+        m = openpose_instance_frames.shape[0]
+        # human_count = openpose_instance_frames.shape[1]
 
-        H = openpose_instance_single_frame.reshape(human_count, 25*3)
-        # H = openpose_instance_single_frame.reshape(-1, human_count, 25*3)
+        # H = openpose_instance_frames.reshape(human_count, 25*3)
+        H = openpose_instance_frames.reshape(-1, human_count, 25*3)
         H = self.frame_dense1(H) #output of this will be shape (human_count, 120)
 
         A = None
@@ -349,37 +356,74 @@ class GatedAttention(nn.Module):
             outPutEmbedding = activations[0][-1] #shape (512)
         
         outPutEmbedding = self.instance_dense2(outPutEmbedding) #shape (120)
-        return outPutEmbedding
+        return outPutEmbedding #shape (120)
         #return outPutEmbedding[0][0] #output shape (120)
         # return outPutEmbedding[0] #output shape (m,120)
 
+    #Each bag is a datapoint. Each bag has multiple instance in it. Each instance has multiple
+    #frames in it.
+    #openpose bag is list of list of tensors
+    def openpose_bag_encoder(self, bag, pooling="attention"):
+
+        instanceNum = len(bag)
+        instanceEncoding = torch.zeros((instanceNum, self.embeddingDimension)) #(instanceNum, 120)
+
+        for idx in range(instanceNum):
+            singleInstance = self.openpose_instance_encoder(bag[idx])
+            instanceEncoding[idx] = singleInstance 
+        #instanceEncoding has shape (instanceNum, 120)
+        instanceEncoding = instanceEncoding.unsqueeze(0) #(1, instanceNum, 120)
+        
+        #not passing initial activation and initial cell is the same as passing a couple of 0 vectors
+        # activations, last_activation_cell = self.instance_lstm_layer(instanceEncoding) #output shape (1, frame_count, 512)
+        # outPutEmbedding = None
+        
+        # if pooling == "attention":
+        #     H = activations[0] #shape(frame_count, 512)
+        #     A_V =  self.attention_V_instance(H) #shape (frame_count, 256)
+        #     A_U = self.attention_U_instance(H) #shape (frame_count, 256)
+        #     A = self.attention_weights_instance(A_V*A_U) #shape (frame_count, 1)
+        #     A = torch.transpose(A, 1, 0) #shape (1, frame_count)
+        #     A = F.softmax(A, dim=1) # softmax over frame_count, (1, frame_count)
+        #     outPutEmbedding = torch.mm(A,H) #shape (1,512)
+        #     outPutEmbedding = outPutEmbedding.squeeze(0) #shape(512)
+        # else:
+        #     #since I'm not using the attention pooling, I'll just select last activation as the outputEmbedding
+        #     outPutEmbedding = activations[0][-1] #shape (512)
+        
+        # outPutEmbedding = self.instance_dense2(outPutEmbedding) #shape (120)
+        # return outPutEmbedding #shape (120)
+
     #I'm assuming x will be like the following [i3d_optical, i3d_rgb, openpose_list]
-    def forward(self, x):
+    #openpose_list ==  list of instances
+    #an instance == list of frames
+    #a frame == a tensor of shape (human_count, 25, 3)
+    def forward(self, x, y):
         # x = x.squeeze(0)
         i3d_optical = x[0]
         i3d_rgb = x[1]
-        openpose_instance = x[2]
+        openpose_bag = x[2]
 
         optical_encoding = self.feature_extractor_opticalflow_i3d(i3d_optical) #shape (120)
         rgb_encoding = self.feature_extractor_rgb_i3d(i3d_rgb) #shape (120)
         i3d_encoding = optical_encoding + rgb_encoding #shape (120)
 
-        openpose_encoding = self.openpose_instance_encoder(openpose_instance) #shape (120)
+        openpose_encoding = self.openpose_bag_encoder(openpose_bag) #shape (120)
 
-        H = self.feature_extractor_part1(x)
-        H = H.view(-1, 50 * 4 * 4)
-        H = self.feature_extractor_part2(H)  # NxL
+        # H = self.feature_extractor_part1(x)
+        # H = H.view(-1, 50 * 4 * 4)
+        # H = self.feature_extractor_part2(H)  # NxL
 
-        A_V = self.attention_V(H)  # NxD
-        A_U = self.attention_U(H)  # NxD
-        A = self.attention_weights(A_V * A_U) # element wise multiplication # NxK
-        A = torch.transpose(A, 1, 0)  # KxN
-        A = F.softmax(A, dim=1)  # softmax over N
+        # A_V = self.attention_V(H)  # NxD
+        # A_U = self.attention_U(H)  # NxD
+        # A = self.attention_weights(A_V * A_U) # element wise multiplication # NxK
+        # A = torch.transpose(A, 1, 0)  # KxN
+        # A = F.softmax(A, dim=1)  # softmax over N
 
-        M = torch.mm(A, H)  # KxL
+        # M = torch.mm(A, H)  # KxL
 
-        Y_prob = self.classifier(M)
-        Y_hat = torch.ge(Y_prob, 0.5).float()
+        # Y_prob = self.classifier(M)
+        # Y_hat = torch.ge(Y_prob, 0.5).float()
 
         return Y_prob, Y_hat, A
 
