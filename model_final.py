@@ -4,14 +4,14 @@ import torch.nn.functional as F
 import config
 
 class GatedAttention(nn.Module):
-    def __init__(self, embeddingDimension=120):
+    def __init__(self):
         # embeddingDimension = final embedding dimesion
         super(GatedAttention, self).__init__()
         # self.L = 500
-        self.L = 256 ?
-        self.D = 64 ?
-        self.embeddingDimension = embeddingDimension #this could be a possible hyperparameter
-        self.K = 1 # final output dimension
+        self.L = config.L 
+        self.D = config.D 
+        self.embeddingDimension = config.embeddingDimension #this could be a possible hyperparameter
+        self.K = config.K # final output dimension
         self.poolingPolicy = ["attention", "avg", "max"]
         self.device = torch.self.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -22,24 +22,39 @@ class GatedAttention(nn.Module):
         """
         self.i3d_opticalflow_extractor1 = nn.Sequential(
             #when pooling layer is used
-            nn.MaxPool2d(kernel_size=3, stride=1),
-            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1), #??#->NUMBER_OF_INSTANCES x  512 x 5 x 5
+            nn.MaxPool2d(kernel_size=config.i3d_opt_ext1["pool1_kernel"], stride=config.i3d_opt_ext1["pool1_stride"]),
+            nn.Conv2d(in_channels=config.i3d_opt_ext1["conv1_in"], 
+                        out_channels=config.i3d_opt_ext1["conv1_out"], 
+                        kernel_size=config.i3d_opt_ext1["conv1_kernel"],
+                        stride=config.i3d_opt_ext1["conv1_stride"]), #??#->NUMBER_OF_INSTANCES x  512 x 5 x 5
             nn.ReLU(), # LeakyReLU try kora jete pare, khub ekta labh hobe na hoyto
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1), #->NUMBER_OF_INSTANCES x  256 x 3 x 3
+            nn.Conv2d(in_channels=config.i3d_opt_ext1["conv2_in"], 
+                        out_channels=config.i3d_opt_ext1["conv2_out"], 
+                        kernel_size=config.i3d_opt_ext1["conv2_kernel"], 
+                        stride=config.i3d_opt_ext1["conv2_stride"]), #->NUMBER_OF_INSTANCES x  256 x 3 x 3
             nn.ReLU()
         )
         self.i3d_opticalflow_extractor2 = nn.Sequential( # Eita default code e dewa
-            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1), #->NUMBER_OF_INSTANCES x  512 x 5 x 5
+            nn.Conv2d(in_channels=config.i3d_opt_ext2["conv1_in"], 
+                        out_channels=config.i3d_opt_ext2["conv1_out"], 
+                        kernel_size=config.i3d_opt_ext2["conv1_kernel"], 
+                        stride=config.i3d_opt_ext2["conv1_stride"]), #->NUMBER_OF_INSTANCES x  512 x 5 x 5
             nn.ReLU(),
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1), #->NUMBER_OF_INSTANCES x  256 x 3 x 3
+            nn.Conv2d(in_channels=config.i3d_opt_ext2["conv2_in"], 
+                        out_channels=config.i3d_opt_ext2["conv2_out"], 
+                        kernel_size=config.i3d_opt_ext2["conv2_kernel"], 
+                        stride=config.i3d_opt_ext2["conv2_stride"]), #->NUMBER_OF_INSTANCES x  256 x 3 x 3
             nn.ReLU(),
         )
         self.i3d_opticalflow_extractor3 = nn.Sequential(
-            nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+            nn.Conv2d(in_channels=config.i3d_opt_ext3["conv1_in"], 
+                        out_channels=config.i3d_opt_ext3["conv1_out"], 
+                        kernel_size=config.i3d_opt_ext3["conv1_kernel"]),
             nn.ReLU()
         )
         self.i3d_opticalflow_extractor4 = nn.Sequential(
-            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension), #->NUMBER_OF_INSTANCES x  self.embeddingDimension
+            nn.Linear(in_features=config.i3d_opt_ext4["dense1_in"], 
+                        out_features=config.i3d_opt_ext4["dense1_out"]), #->NUMBER_OF_INSTANCES x  self.embeddingDimension
             nn.ReLU()
         )
 
@@ -116,7 +131,18 @@ class GatedAttention(nn.Module):
         )
         self.attention_weights_instance = nn.Linear(256, self.K) # attention score generator
 
-        self.instance_conv1D_layer = ?
+        self.instance_conv1D_layer = self.conv_encoder = nn.Sequential(
+                                                nn.Conv1d(in_channels=512,
+                                                out_channels=512,
+                                                kernel_size=Constant_Instance_Length//2, stride=1,
+                                                padding=Constant_Instance_Length//4, dilation=1, groups=1,
+                                                bias=True, padding_mode='zeros'),
+                                                nn.LeakyReLU(negative_slope=.01),
+            # nn.BatchNorm1d(num_features=32,
+            #                eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+                                                nn.Dropout(.5)  # it was .2
+        )
+
 
         "openpose bag layers"
         self.openpose_bag_lstm_input_dim = 120
@@ -251,9 +277,11 @@ class GatedAttention(nn.Module):
         if config.USE_INSTANCE_LSTM_ENCODING:
             # option 1: lstm encoding
             activations, last_activation_cell = self.instance_lstm_layer(encoded_frames) #output shape (instance_count, frame_count, 512)
-        elif config.USE_INSTANCE_CONV1D_ENCODING: ??kemne mama??
+        elif config.USE_INSTANCE_CONV1D_ENCODING: 
             # option 2: conv encoding
+            encoded_frames = encoded_frames.permute(0,2,1) # output shape (instance_count, 512, frame_count)
             activations = self.instance_conv1D_layer(encoded_frames)  # output shape (instance_count, frame_count, 512)
+            encoded_frames = encoded_frames.permute(0,2,1)
         else:
             # option 3: use nothing
             activations = encoded_frames
