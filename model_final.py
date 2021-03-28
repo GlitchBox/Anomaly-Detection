@@ -116,9 +116,21 @@ class GatedAttention(nn.Module):
         )
         self.attention_weights_instance = nn.Linear(256, self.K) # attention score generator
 
-        self.instance_conv1D_layer = 
+        self.instance_conv1D_layer = ?
 
         "openpose bag layers"
+        self.openpose_bag_lstm_input_dim = 120
+        self.openpose_bag_lstm_output_dim = 512
+        self.openpose_bag_lstm_layers_num = 1
+        self.openpose_bag_apply_bidirectional_lstm = False
+        self.openpose_bag_lstm_layer = nn.LSTM(
+                                    input_size=self.openpose_bag_lstm_input_dim, 
+                                    hidden_size=self.openpose_bag_lstm_output_dim, 
+                                    num_layers=self.openpose_bag_lstm_layers_num, 
+                                    batch_first=True,
+                                    bidirectional=self.openpose_bag_apply_bidirectional_lstm
+                                    )
+        self.openpose_bag_dense = nn.Linear(in_features=512, out_features=256)
 
         """classfier layers"""
         self.classifier = nn.Sequential(
@@ -175,6 +187,12 @@ class GatedAttention(nn.Module):
 
         return rgb.squeeze(0) #output shape (120)
         # return rgb #output shape (m,120)
+
+    def i3d_instance_encoder(self, i3d_optical, i3d_rgb): #DONE
+        optical_encoding = self.feature_extractor_opticalflow_i3d(i3d_optical) #shape (instance, 120)
+        rgb_encoding = self.feature_extractor_rgb_i3d(i3d_rgb) #shape (instance, 120)
+        i3d_encoding = optical_encoding + rgb_encoding #shape (instance, 120)
+        return i3d_encoding
 
     def frame_encoder(self, single_frame, pooling='attention'): #DONE
         """
@@ -275,32 +293,29 @@ class GatedAttention(nn.Module):
         return outPutEmbedding #shape (instance_count, 120)
 
 
-    def i3d_instance_encoder(self, i3d_optical, i3d_rgb):
-        optical_encoding = self.feature_extractor_opticalflow_i3d(i3d_optical) #shape (instance, 120)
-        rgb_encoding = self.feature_extractor_rgb_i3d(i3d_rgb) #shape (instance, 120)
-        i3d_encoding = optical_encoding + rgb_encoding #shape (instance, 120)
-        return i3d_encoding
-
-    def openpose_bag_encoder(self, openpose_bag, pooling):
+    def openpose_bag_encoder(self, openpose_bag, pooling): #ALMOST DONE
         """
         # Each bag is a datapoint. Each bag has multiple instances in it.
         # Each instance has multiple frames in it.
         # openpose bag is list of list of tensors
+        instance_count is variable (right?)
         """
         instance_count = len(openpose_bag)
         encoded_instances = self.openpose_instance_encoder(bag=openpose_bag, instance_count=instance_count) #(instance_count, 120)
 
         #instanceEncoding has shape (instance_count, 120)
         encoded_instances = encoded_instances.unsqueeze(0) #(1, instance_count, 120)
-
+        """
+        bag_lstm_output_dim = 512, for now
+        """
         # not passing initial activation and initial cell is the same as passing a couple of 0 vectors
-        if self.USE_BAG_LSTM_ENCODING:
+        if config.USE_BAG_LSTM_ENCODING:
             # option 1: lstm encoding
-            activations, last_activation_cell = self.bag_lstm_layer(
-                encoded_instances)  # output shape (1, instance_count, bag_lstm_dim)
-        elif self.USE_BAG_CONV1D_ENCODING:
+            activations, last_activation_cell = self.openpose_bag_lstm_layer(
+                encoded_instances)  # output shape (1, instance_count, bag_lstm_output_dim)
+        elif config.USE_BAG_CONV1D_ENCODING: ??kemne mama??
             # option 2: conv encoding
-            activations = self.instance_conv1D_layer(encoded_instances)  # output shape (1, instance_count, bag_lstm_dim)
+            activations = self.instance_conv1D_layer(encoded_instances)  # output shape (1, instance_count, bag_lstm_output_dim)
         else:
             # option 3: use nothing
             activations = encoded_instances
@@ -308,11 +323,11 @@ class GatedAttention(nn.Module):
         outPutEmbedding = None
 
         if pooling == 'attention' or pooling == 'max' or pooling == 'avg':
-            H = activations  # shape(1, instance_count, bag_lstm_dim)
+            H = activations  # shape(1, instance_count, bag_lstm_output_dim)
             # A = None
             if pooling == 'attention' or pooling == 'max':
-                A_V = self.attention_V_bag(H)  # output-> (1, instance_count, bag_lstm_dim)
-                A_U = self.attention_U_bag(H)  # output-> (1, instance_count, bag_lstm_dim)
+                A_V = self.attention_V_bag(H)  # output-> (1, instance_count, bag_lstm_output_dim)
+                A_U = self.attention_U_bag(H)  # output-> (1, instance_count, bag_lstm_output_dim)
                 A = self.attention_weights_bag(A_V * A_U).squeeze(2)
                 # ^ Gating mechanism apply korlam. output-> (1, instance_count).
                 # A = torch.transpose(A.unsqueeze(2), 0, 1) # (1, instance_count)
@@ -326,19 +341,21 @@ class GatedAttention(nn.Module):
                     A = A_
             elif pooling == 'avg':
                 A = torch.ones([1, instance_count]) / instance_count
-            outPutEmbedding = torch.mm(A, H[0])  # (1, instance_count)* (instance_count, bag_lstm_dim) = (1, bag_lstm_dim)
-            outPutEmbedding = outPutEmbedding.squeeze(0)  # shape(bag_lstm_dim)
+            outPutEmbedding = torch.mm(A, H[0])  # (1, instance_count)* (instance_count, bag_lstm_output_dim) = (1, bag_lstm_output_dim)
+            outPutEmbedding = outPutEmbedding.squeeze(0)  # shape(bag_lstm_output_dim)
         elif self.USE_BAG_LSTM_ENCODING:
             # since I'm not using the attention pooling, I'll just select last activation as the outputEmbedding
             # this is only usable when we are using LSTM encoding where the last embedding constains the encoding of
             # the whole sequence.
-            outPutEmbedding = activations[0, -1, :]  # shape (bag_lstm_dim)
+            outPutEmbedding = activations[0, -1, :]  # shape (bag_lstm_output_dim)
         else:
             raise Exception
+        """
+        bag_dense_dim = 256, for now
+        """
+        outPutEmbedding = self.openspose_bag_dense(outPutEmbedding)  # a dimension reduction. Output -> shape (bag_dense_dim)
 
-        outPutEmbedding = self.bag_dense(outPutEmbedding)  # a dimension reduction. Output -> shape (bag_dense_dim)
-
-        return outPutEmbedding  # shape (bag_dense_dim)
+        return outPutEmbedding  # shape (bag_dense_dim) 
 
     def i3d_bag_encoder(self, i3d_optical, i3d_rgb, pooling):
         """
