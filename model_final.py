@@ -13,7 +13,7 @@ class GatedAttention(nn.Module):
         self.embeddingDimension = embeddingDimension #this could be a possible hyperparameter
         self.K = 1 # final output dimension
         self.poolingPolicy = ["attention", "avg", "max"]
-
+        self.device = torch.self.device("cuda" if torch.cuda.is_available() else "cpu")
 
         """ 
         i3d layers:
@@ -116,6 +116,8 @@ class GatedAttention(nn.Module):
         )
         self.attention_weights_instance = nn.Linear(256, self.K) # attention score generator
 
+        self.instance_conv1D_layer = 
+
         "openpose bag layers"
 
         """classfier layers"""
@@ -202,7 +204,7 @@ class GatedAttention(nn.Module):
                 A = F.softmax(A, dim=1) # softmax over human_count, (1, human_count)
                 # softmax doesn't have learnable parameters, hence it need not be declared in __init__
             else:
-                A_ = torch.zeros([1, human_count]).to(device)
+                A_ = torch.zeros([1, human_count]).to(self.device)
                 A_[0][A.argmax()] = 1
                 A = A_
         elif pooling == 'avg':
@@ -228,10 +230,10 @@ class GatedAttention(nn.Module):
         #now encoded_frames will be a tensor of shape (instance_count, frame_count, 256), because lstm expects 3d inputs
 
         #not passing initial activation and initial cell is the same as passing a couple of 0 vectors
-        if self.USE_INSTANCE_LSTM_ENCODING:
+        if config.USE_INSTANCE_LSTM_ENCODING:
             # option 1: lstm encoding
             activations, last_activation_cell = self.instance_lstm_layer(encoded_frames) #output shape (instance_count, frame_count, 512)
-        elif self.USE_INSTANCE_CONV1D_ENCODING:
+        elif config.USE_INSTANCE_CONV1D_ENCODING: ??kemne mama??
             # option 2: conv encoding
             activations = self.instance_conv1D_layer(encoded_frames)  # output shape (instance_count, frame_count, 512)
         else:
@@ -254,14 +256,14 @@ class GatedAttention(nn.Module):
                     A = F.softmax(A, dim=-1) # softmax over frame_count, (instance_count, frame_count)
                     # softmax doesn't have learnable parameters, hence it need not be declared in __init__
                 elif pooling == 'max':
-                    A_ = torch.zeros([instance_count, frame_count]).to(device)
+                    A_ = torch.zeros([instance_count, frame_count]).to(self.device)
                     A_[range(0,instance_count), A.argmax(-1)] = 1
                     A = A_
             elif pooling == 'avg':
                 A = torch.ones([instance_count, frame_count]) / frame_count
             outPutEmbedding = torch.bmm(A.unsqueeze(1), H)  # (instance_count, 1, frame_count)* (instance_count, frame_count, 512) = (instance_count, 1,512)
             outPutEmbedding = outPutEmbedding.squeeze(1)  # shape(instance_count, 512)
-        elif self.USE_INSTANCE_LSTM_ENCODING:
+        elif config.USE_INSTANCE_LSTM_ENCODING:
             # since I'm not using the attention pooling, I'll just select last activation as the outputEmbedding
             # this is only usable when we are using LSTM encoding where the last embedding constains and encoding of
             # the whole sequence.
@@ -319,7 +321,7 @@ class GatedAttention(nn.Module):
                     A = F.softmax(A, dim=-1)  # softmax over instance_count, (1, instance_count)
                     # softmax doesn't have learnable parameters, hence it need not be declared in __init__
                 elif pooling == 'max':
-                    A_ = torch.zeros([1, instance_count]).to(device)
+                    A_ = torch.zeros([1, instance_count]).to(self.device)
                     A_[0, A.argmax(-1)] = 1
                     A = A_
             elif pooling == 'avg':
@@ -379,7 +381,7 @@ class GatedAttention(nn.Module):
                     A = F.softmax(A, dim=-1)  # softmax over instance_count, (1, instance_count)
                     # softmax doesn't have learnable parameters, hence it need not be declared in __init__
                 elif pooling == 'max':
-                    A_ = torch.zeros([1, instance_count]).to(device)
+                    A_ = torch.zeros([1, instance_count]).to(self.device)
                     A_[0, A.argmax(-1)] = 1
                     A = A_
             elif pooling == 'avg':
@@ -444,7 +446,7 @@ class GatedAttention(nn.Module):
                     A = F.softmax(A, dim=-1)  # softmax over instance_count, (1, instance_count)
                     # softmax doesn't have learnable parameters, hence it need not be declared in __init__
                 elif pooling == 'max':
-                    A_ = torch.zeros([1, instance_count]).to(device)
+                    A_ = torch.zeros([1, instance_count]).to(self.device)
                     A_[0, A.argmax(-1)] = 1
                     A = A_
             elif pooling == 'avg':
