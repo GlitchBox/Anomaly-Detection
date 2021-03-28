@@ -94,7 +94,7 @@ class GatedAttention(nn.Module):
         self.lstm_output_dim = 512
         self.lstm_layers_num = 1
         self.apply_bidirectional_lstm = False
-        #should we opt for bidirectional lstm layer?
+        #should we opt bidirectional lstm layer?
         self.instance_lstm_layer = nn.LSTM(
                                     input_size=self.lstm_input_dim, 
                                     hidden_size=self.lstm_output_dim, 
@@ -217,7 +217,7 @@ class GatedAttention(nn.Module):
         # I'm assuming that the "single_instance" will be "list" of tensors, each with the shape -> (human_count, 25, 3)
         # len(single_instance) == the number of frame == Constant
         """
-        frame_count = self.Constant_Instance_Length
+        frame_count = config.Constant_Instance_Length
         encoded_frames = torch.zeros([instance_count, frame_count, self.lstm_input_dim]) # (instance_count, frame_count, 256)
 
         for instance_index in range(instance_count):
