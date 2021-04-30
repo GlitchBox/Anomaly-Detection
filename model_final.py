@@ -13,7 +13,7 @@ class GatedAttention(nn.Module):
         self.embeddingDimension = config.embeddingDimension #this could be a possible hyperparameter
         self.K = config.K # final output dimension
         self.poolingPolicy = ["attention", "avg", "max"]
-        self.device = torch.self.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         """ 
         i3d layers:
@@ -61,24 +61,24 @@ class GatedAttention(nn.Module):
         self.i3d_rgb_extractor1 = nn.Sequential(
 
             #When pooling layer is used
-            nn.MaxPool2d(kernel_size=3, stride=1),
-            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3,stride=1), #??# needs sanity checking of the shape
+            nn.MaxPool2d(kernel_size=config.i3d_rgb_ext1["pool1_kernel"], stride=config.i3d_rgb_ext1["pool1_stride"]),
+            nn.Conv2d(in_channels=config.i3d_rgb_ext1["conv1_in"], out_channels=config.i3d_rgb_ext1["conv1_out"], kernel_size=config.i3d_rgb_ext1["conv1_kernel"],stride=config.i3d_rgb_ext1["conv1_stride"]), #??# needs sanity checking of the shape
             nn.ReLU(),
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1, stride=1),
+            nn.Conv2d(in_channels=config.i3d_rgb_ext1["conv2_in"], out_channels=config.i3d_rgb_ext1["conv2_out"], kernel_size=config.i3d_rgb_ext1["conv2_kernel"], stride=config.i3d_rgb_ext1["conv2_stride"]),
             nn.ReLU()
         )
         self.i3d_rgb_extractor2 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=config.i3d_rgb_ext2["conv1_in"], out_channels=config.i3d_rgb_ext2["conv1_out"], kernel_size=config.i3d_rgb_ext2["conv1_kernel"], stride=config.i3d_rgb_ext2["conv1_stride"]),
             nn.ReLU(),
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=config.i3d_rgb_ext2["conv2_in"], out_channels=config.i3d_rgb_ext2["conv2_out"], kernel_size=config.i3d_rgb_ext2["conv2_kernel"], stride=config.i3d_rgb_ext2["conv2_stride"]),
             nn.ReLU()
         )
         self.i3d_rgb_extractor3 = nn.Sequential(
-            nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+            nn.Conv2d(in_channels=config.i3d_rgb_ext3["conv1_in"], out_channels=config.i3d_rgb_ext3["conv1_out"], kernel_size=config.i3d_rgb_ext3["conv1_kernel"]),
             nn.ReLU()
         )
         self.i3d_rgb_extractor4 = nn.Sequential(
-            nn.Linear(in_features=64*3*3, out_features=self.embeddingDimension), #->NUMBER_OF_INSTANCES x  self.embeddingDimension
+            nn.Linear(in_features=config.i3d_rgb_ext4["dense1_in"], out_features=config.i3d_rgb_ext4["dense1_out"]), #->NUMBER_OF_INSTANCES x  self.embeddingDimension
             nn.ReLU()
         )
         
@@ -87,55 +87,50 @@ class GatedAttention(nn.Module):
         openpose frame_encoder layers:
          
         """
-        self.frame_dense1 = nn.Linear(in_features=25*3, out_features=self.embeddingDimension)
+        self.frame_dense1 = nn.Linear(in_features=config.frame_dense1["in"], out_features=config.frame_dense1["out"])
         self.attention_V_frame = nn.Sequential(
             # transformation before applying attention ->  Input_dim: NUMBER_OF_HUMAN x self.embeddingDimension
-            nn.Linear(self.embeddingDimension, self.D), # -> NUMBER_OF_HUMAN x self.D
+            nn.Linear(config.frame_V["in"], config.frame_V["out"]), # -> NUMBER_OF_HUMAN x self.D
             # nn.Linear(90, 60),
             nn.Tanh()
         )
         self.attention_U_frame = nn.Sequential( # gating mechanism
-            nn.Linear(self.embeddingDimension, self.D),
+            nn.Linear(config.frame_U["in"], config.frame_U["out"]),
             # nn.Linear(90, 60),
             nn.Sigmoid()
         )
-        self.attention_weights_frame = nn.Linear(self.D, self.K) # attention score generator
+        self.attention_weights_frame = nn.Linear(config.frame_attention_weights["in"], config.frame_attention_weights["out"]) # attention score generator
 
 
         """ openpose instance layers"""
-        self.instance_dense1 = nn.Linear(in_features=120, out_features=256)
-        
-        self.lstm_input_dim = 256
-        self.lstm_output_dim = 512
-        self.lstm_layers_num = 1
-        self.apply_bidirectional_lstm = False
+        self.instance_dense1 = nn.Linear(in_features=config.instance_dense1["in"], out_features=config.instance_dense1["out"])
         #should we opt bidirectional lstm layer?
         self.instance_lstm_layer = nn.LSTM(
-                                    input_size=self.lstm_input_dim, 
-                                    hidden_size=self.lstm_output_dim, 
-                                    num_layers=self.lstm_layers_num, 
+                                    input_size= config.instance_lstm1["in"], 
+                                    hidden_size=config.instance_lstm1["out"], 
+                                    num_layers=config.instance_lstm1["layers"], 
                                     batch_first=True,
-                                    bidirectional=self.apply_bidirectional_lstm
+                                    bidirectional=config.instance_lstm1["ifBidirectional"]
                                     )
-        self.instance_dense2 = nn.Linear(in_features=512, out_features=120)
+        self.instance_dense2 = nn.Linear(in_features=config.instance_dense2["in"], out_features=config.instance_dense2["out"])
         
         self.attention_V_instance = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.Linear(config.instance_V["in"], config.instance_V["out"]),
             # nn.Linear(90, 60),
             nn.Tanh()
         )
         self.attention_U_instance = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.Linear(config.instance_U["in"], config.instance_U["out"]),
             # nn.Linear(90, 60),
             nn.Sigmoid()
         )
-        self.attention_weights_instance = nn.Linear(256, self.K) # attention score generator
+        self.attention_weights_instance = nn.Linear(config.instance_attention_weight["in"], config.instance_attention_weight["out"]) # attention score generator
 
         self.instance_conv1D_layer = self.conv_encoder = nn.Sequential(
-                                                nn.Conv1d(in_channels=512,
-                                                out_channels=512,
-                                                kernel_size=Constant_Instance_Length//2, stride=1,
-                                                padding=Constant_Instance_Length//4, dilation=1, groups=1,
+                                                nn.Conv1d(in_channels=config.instance_conv1["in"],
+                                                out_channels=config.instance_conv1["out"],
+                                                kernel_size=config.instance_conv1["kernel"], stride=config.instance_conv1["stride"],
+                                                padding=config.instance_conv1["padding"], dilation=1, groups=1,
                                                 bias=True, padding_mode='zeros'),
                                                 nn.LeakyReLU(negative_slope=.01),
             # nn.BatchNorm1d(num_features=32,
@@ -145,22 +140,30 @@ class GatedAttention(nn.Module):
 
 
         "openpose bag layers"
-        self.openpose_bag_lstm_input_dim = 120
-        self.openpose_bag_lstm_output_dim = 512
-        self.openpose_bag_lstm_layers_num = 1
-        self.openpose_bag_apply_bidirectional_lstm = False
         self.openpose_bag_lstm_layer = nn.LSTM(
-                                    input_size=self.openpose_bag_lstm_input_dim, 
-                                    hidden_size=self.openpose_bag_lstm_output_dim, 
-                                    num_layers=self.openpose_bag_lstm_layers_num, 
+                                    input_size=config.bag_lstm1["in"], 
+                                    hidden_size=config.bag_lstm1["out"], 
+                                    num_layers=config.bag_lstm1["layers"], 
                                     batch_first=True,
-                                    bidirectional=self.openpose_bag_apply_bidirectional_lstm
+                                    bidirectional=config.bag_lstm1["ifBidirectional"]
                                     )
-        self.openpose_bag_dense = nn.Linear(in_features=512, out_features=256)
+        self.attention_V_bag = nn.Sequential(
+            nn.Linear(config.bag_V["in"], config.bag_V["out"]),
+            # nn.Linear(90, 60),
+            nn.Tanh()
+        )
+        self.attention_U_bag = nn.Sequential(
+            nn.Linear(config.bag_U["in"], config.bag_U["out"]),
+            # nn.Linear(90, 60),
+            nn.Sigmoid()
+        )
+        self.attention_weights_bag = nn.Linear(config.bag_attention_weight["in"], config.bag_attention_weight["out"]) # attention score generator
+
+        self.openpose_bag_dense = nn.Linear(in_features=config.bag_dense1["in"], out_features=config.bag_dense1["out"])
 
         """classfier layers"""
         self.classifier = nn.Sequential(
-            nn.Linear(self.L*self.K, 1),
+            nn.Linear(config.classifier_dense1["in"], config.classifier_dense1["out"]),
             nn.Sigmoid()
         )
     
@@ -217,7 +220,16 @@ class GatedAttention(nn.Module):
     def i3d_instance_encoder(self, i3d_optical, i3d_rgb): #DONE
         optical_encoding = self.feature_extractor_opticalflow_i3d(i3d_optical) #shape (instance, 120)
         rgb_encoding = self.feature_extractor_rgb_i3d(i3d_rgb) #shape (instance, 120)
-        i3d_encoding = optical_encoding + rgb_encoding #shape (instance, 120)
+        
+        if config.I3D_FEATURESET=="both":
+            i3d_encoding = optical_encoding + rgb_encoding #shape (instance, 120)
+        elif config.I3D_FEATURESET=="rgb":
+            i3d_encoding = optical_encoding
+        elif config.I3D_FEATURESET=="flow":
+            i3d_encoding = rgb_encoding
+        else:
+            raise Exception()
+
         return i3d_encoding
 
     def frame_encoder(self, single_frame, pooling='attention'): #DONE
@@ -341,7 +353,7 @@ class GatedAttention(nn.Module):
             # option 1: lstm encoding
             activations, last_activation_cell = self.openpose_bag_lstm_layer(
                 encoded_instances)  # output shape (1, instance_count, bag_lstm_output_dim)
-        elif config.USE_BAG_CONV1D_ENCODING: ??kemne mama??
+        elif config.USE_BAG_CONV1D_ENCODING: 
             # option 2: conv encoding
             activations = self.instance_conv1D_layer(encoded_instances)  # output shape (1, instance_count, bag_lstm_output_dim)
         else:
@@ -457,7 +469,7 @@ class GatedAttention(nn.Module):
         i3d_encoded_instances = self.i3d_instance_encoder(i3d_optical=i3d_optical,
                                                           i3d_rgb=i3d_rgb)  # (instance_count, 120)
 
-        encoded_instances = torch.cat([openpose_encoded_instances, i3d_encoded_instances])
+        encoded_instances = torch.cat([openpose_encoded_instances, i3d_encoded_instances]) 
 
         # instanceEncoding has shape (instance_count, 120)
         encoded_instances = encoded_instances.unsqueeze(0)  # (1, instance_count, 120)
@@ -532,41 +544,55 @@ class GatedAttention(nn.Module):
             b. Late fusion: Train the Single-featured-models individually and then jointly train them (maybe very low
             learning rate) with an extra randomly initiated classifier (normal learning rate) == kinda' transfer learning
         """
-        if config.FEATURE_SET=='both' and not config.MERGE_BEFORE_CLASSIFICATION:
+        if config.FEATURE_SET_TYPE=='both' and not config.MERGE_BEFORE_CLASSIFICATION:
             return self.joint_openpose_and_i3d_bag_encoder(
                         i3d_optical=i3d_optical,
                         i3d_rgb=i3d_rgb,
                         openpose_bag=openpose_bag,
                         pooling=config.bag_poolings
                     )
-        if config.FEATURE_SET_TYPE=='openpose' or config.MERGE_BEFORE_CLASSIFICATION:
-            openpose_bag_encoding_vector, attention_on_instances, attention_on_frames, \
-            attention_on_human_pose_encoding = self.openpose_bag_encoder(openpose_bag=openpose_bag,
+        if config.FEATURE_SET_TYPE =='openpose' or config.MERGE_BEFORE_CLASSIFICATION:
+
+            """
+            egula shob propagate kore return koraite hobe
+            """
+            # openpose_bag_encoding_vector, attention_on_instances, attention_on_frames, \
+            # attention_on_human_pose_encoding 
+            openpose_bag_encoding = self.openpose_bag_encoder(openpose_bag=openpose_bag,
                                                                  pooling=config.bag_pooling) #shape (120)
             final_bag_encoding_vector = openpose_bag_encoding_vector
-        if config.FEATURE_SET=='i3d' or config.MERGE_BEFORE_CLASSIFICATION:
-            i3d_bag_encoding_vector, attention_on_instances, attention_on_frames, \
-            attention_on_human_pose_encoding = self.i3d_bag_encoder(i3d_optical=i3d_optical,
+        if config.FEATURE_SET_TYPE=='i3d' or config.MERGE_BEFORE_CLASSIFICATION:
+
+            """egula shob propagate kore return koraite hobe"""
+            # i3d_bag_encoding_vector, attention_on_instances, attention_on_frames, \
+            # attention_on_human_pose_encoding 
+            i3d_bag_encoding_vector= self.i3d_bag_encoder(i3d_optical=i3d_optical,
                                                   i3d_rgb=i3d_rgb,
                                                   pooling=config.bag_pooling)
             final_bag_encoding_vector = i3d_bag_encoding_vector
         if config.MERGE_BEFORE_CLASSIFICATION:
             final_bag_encoding_vector = torch.cat([openpose_bag_encoding_vector, i3d_bag_encoding_vector])
 
-        return final_bag_encoding_vector, attention_on_instances, attention_on_frames, \
-                attention_on_human_pose_encoding
+        """egula shob propagate koraite hobe"""
+        # return final_bag_encoding_vector, attention_on_instances, attention_on_frames, \
+        #         attention_on_human_pose_encoding
+        return final_bag_encoding_vector
+
     #I'm assuming x will be like the following [i3d_optical, i3d_rgb, openpose_list]
     #openpose_list ==  list of instances
     #an instance == list of frames
     #a frame == a tensor of shape (human_count, 25, 3)
     def forward(self, joint_bag):
         # x = x.squeeze(0)
-        i3d_optical = joint_bag[0]
-        i3d_rgb = joint_bag[1]
-        openpose_bag = joint_bag[2]
 
-        final_bag_encoding_vector, attention_on_instances, attention_on_frames, \
-        attention_on_human_pose_encoding = self.joint_openpose_and_i3d_bag_encoder(
+        ?? konta ashtese sheita check koraite hobe ??
+        i3d_optical = joint_bag["i3d_bag"]["flow"]
+        i3d_rgb = joint_bag["i3d_bag"]["rgb"]
+        openpose_bag = joint_bag["openpose_bag"]
+
+        # final_bag_encoding_vector, attention_on_instances, attention_on_frames, \
+        # attention_on_human_pose_encoding 
+        final_bag_encoding = self.joint_openpose_and_i3d_bag_encoder(
                                                 i3d_optical=i3d_optical,
                                                 i3d_rgb=i3d_rgb,
                                                 openpose_bag=openpose_bag,

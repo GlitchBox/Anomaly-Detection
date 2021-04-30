@@ -1,0 +1,173 @@
+GatedAttention(
+  (i3d_opticalflow_extractor1): Sequential(
+    (0): MaxPool2d(kernel_size=3, stride=1, padding=0, dilation=1, ceil_mode=False)
+    (1): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (2): ReLU()
+    (3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (4): ReLU()
+  )
+  (i3d_opticalflow_extractor2): Sequential(
+    (0): Conv2d(1204, 512, kernel_size=(3, 3), stride=(1, 1))
+    (1): ReLU()
+    (2): Conv2d(512, 256, kernel_size=(3, 3), stride=(1, 1))
+    (3): ReLU()
+  )
+  (i3d_opticalflow_extractor3): Sequential(
+    (0): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1))
+    (1): ReLU()
+  )
+  (i3d_opticalflow_extractor4): Sequential(
+    (0): Linear(in_features=576, out_features=120, bias=True)
+    (1): ReLU()
+  )
+  (i3d_rgb_extractor1): Sequential(
+    (0): MaxPool2d(kernel_size=3, stride=1, padding=0, dilation=1, ceil_mode=False)
+    (1): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (2): ReLU()
+    (3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (4): ReLU()
+  )
+  (i3d_rgb_extractor2): Sequential(
+    (0): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (1): ReLU()
+    (2): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (3): ReLU()
+  )
+  (i3d_rgb_extractor3): Sequential(
+    (0): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1))
+    (1): ReLU()
+  )
+  (i3d_rgb_extractor4): Sequential(
+    (0): Linear(in_features=576, out_features=120, bias=True)
+    (1): ReLU()
+  )
+  (frame_dense1): Linear(in_features=75, out_features=120, bias=True)
+  (attention_V_frame): Sequential(
+    (0): Linear(in_features=120, out_features=64, bias=True)
+    (1): Tanh()
+  )
+  (attention_U_frame): Sequential(
+    (0): Linear(in_features=120, out_features=64, bias=True)
+    (1): Sigmoid()
+  )
+  (attention_weights_frame): Linear(in_features=64, out_features=1, bias=True)
+  (instance_dense1): Linear(in_features=120, out_features=256, bias=True)
+  (instance_lstm_layer): LSTM(256, 512, batch_first=True)
+  (instance_dense2): Linear(in_features=512, out_features=120, bias=True)
+  (attention_V_instance): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Tanh()
+  )
+  (attention_U_instance): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Sigmoid()
+  )
+  (attention_weights_instance): Linear(in_features=256, out_features=1, bias=True)
+  (instance_conv1D_layer): Sequential(
+    (0): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+    (1): LeakyReLU(negative_slope=0.01)
+    (2): Dropout(p=0.5, inplace=False)
+  )
+  (conv_encoder): Sequential(
+    (0): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+    (1): LeakyReLU(negative_slope=0.01)
+    (2): Dropout(p=0.5, inplace=False)
+  )
+  (openpose_bag_lstm_layer): LSTM(120, 512, batch_first=True)
+  (openpose_bag_dense): Linear(in_features=512, out_features=256, bias=True)
+  (classifier): Sequential(
+    (0): Linear(in_features=256, out_features=1, bias=True)
+    (1): Sigmoid()
+  )
+)
+GatedAttention(
+  (i3d_opticalflow_extractor1): Sequential(
+    (0): MaxPool2d(kernel_size=3, stride=1, padding=0, dilation=1, ceil_mode=False)
+    (1): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (2): ReLU()
+    (3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (4): ReLU()
+  )
+  (i3d_opticalflow_extractor2): Sequential(
+    (0): Conv2d(1204, 512, kernel_size=(3, 3), stride=(1, 1))
+    (1): ReLU()
+    (2): Conv2d(512, 256, kernel_size=(3, 3), stride=(1, 1))
+    (3): ReLU()
+  )
+  (i3d_opticalflow_extractor3): Sequential(
+    (0): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1))
+    (1): ReLU()
+  )
+  (i3d_opticalflow_extractor4): Sequential(
+    (0): Linear(in_features=576, out_features=120, bias=True)
+    (1): ReLU()
+  )
+  (i3d_rgb_extractor1): Sequential(
+    (0): MaxPool2d(kernel_size=3, stride=1, padding=0, dilation=1, ceil_mode=False)
+    (1): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (2): ReLU()
+    (3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (4): ReLU()
+  )
+  (i3d_rgb_extractor2): Sequential(
+    (0): Conv2d(1024, 512, kernel_size=(3, 3), stride=(1, 1))
+    (1): ReLU()
+    (2): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+    (3): ReLU()
+  )
+  (i3d_rgb_extractor3): Sequential(
+    (0): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1))
+    (1): ReLU()
+  )
+  (i3d_rgb_extractor4): Sequential(
+    (0): Linear(in_features=576, out_features=120, bias=True)
+    (1): ReLU()
+  )
+  (frame_dense1): Linear(in_features=75, out_features=120, bias=True)
+  (attention_V_frame): Sequential(
+    (0): Linear(in_features=120, out_features=64, bias=True)
+    (1): Tanh()
+  )
+  (attention_U_frame): Sequential(
+    (0): Linear(in_features=120, out_features=64, bias=True)
+    (1): Sigmoid()
+  )
+  (attention_weights_frame): Linear(in_features=64, out_features=1, bias=True)
+  (instance_dense1): Linear(in_features=120, out_features=256, bias=True)
+  (instance_lstm_layer): LSTM(256, 512, batch_first=True)
+  (instance_dense2): Linear(in_features=512, out_features=120, bias=True)
+  (attention_V_instance): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Tanh()
+  )
+  (attention_U_instance): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Sigmoid()
+  )
+  (attention_weights_instance): Linear(in_features=256, out_features=1, bias=True)
+  (instance_conv1D_layer): Sequential(
+    (0): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+    (1): LeakyReLU(negative_slope=0.01)
+    (2): Dropout(p=0.5, inplace=False)
+  )
+  (conv_encoder): Sequential(
+    (0): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+    (1): LeakyReLU(negative_slope=0.01)
+    (2): Dropout(p=0.5, inplace=False)
+  )
+  (openpose_bag_lstm_layer): LSTM(120, 512, batch_first=True)
+  (attention_V_bag): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Tanh()
+  )
+  (attention_U_bag): Sequential(
+    (0): Linear(in_features=512, out_features=256, bias=True)
+    (1): Sigmoid()
+  )
+  (attention_weights_bag): Linear(in_features=256, out_features=1, bias=True)
+  (openpose_bag_dense): Linear(in_features=512, out_features=256, bias=True)
+  (classifier): Sequential(
+    (0): Linear(in_features=256, out_features=1, bias=True)
+    (1): Sigmoid()
+  )
+)
